@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Cloud Notepad</title>
+
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --card: #ffffff;
+      --text: #1f2933;
+      --border: #d1d5db;
+      --primary: #2563eb;
+      --success: #16a34a;
+      --error: #dc2626;
+    }
+
+    body.dark {
+      --bg: #0f172a;
+      --card: #020617;
+      --text: #e5e7eb;
+      --border: #334155;
+      --primary: #3b82f6;
+      --success: #22c55e;
+      --error: #ef4444;
+    }
+x
+    * {
+      box-sizing: border-box;
+      transition: background 0.3s, color 0.3s, border 0.3s;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 20px;
+    }
+
+    .card {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+    }
+
+    .toggle {
+      cursor: pointer;
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--text);
+    }
+
+    label {
+      display: block;
+      margin-top: 10px;
+      font-size: 0.9rem;
+      opacity: 0.9;
+    }
+
+    input, textarea {
+      width: 100%;
+      margin-top: 5px;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      font-size: 1rem;
+    }
+
+    textarea {
+      height: 320px;
+      resize: vertical;
+      margin-top: 15px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 15px;
+    }
+
+    button {
+      border: none;
+      padding: 10px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      background: var(--primary);
+      color: white;
+    }
+
+    button.secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    button.danger {
+      background: #7f1d1d;
+    }
+
+    .status {
+      margin-top: 12px;
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+
+    .status.success {
+      color: var(--success);
+    }
+
+    .status.error {
+      color: var(--error);
+    }
+
+    footer {
+      margin-top: 15px;
+      font-size: 0.8rem;
+      opacity: 0.6;
+      text-align: center;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="card">
+
+      <header> 
+        <h1>☁️ Cloud Notepad</h1>
+        <button class="toggle" onclick="toggleDarkMode()">🌙 Dark Mode</button>
+      </header>
+
+      <label>GitHub Token</label>
+      <input type="password" id="token" placeholder="ghp_..." />
+
+      <label>File Name</label>
+      <input type="text" id="filename" placeholder="notes.txt" />
+
+      <textarea id="editor" placeholder="Write your notes here..."></textarea>
+
+      <div class="actions">
+        <button onclick="loadFile()">Load File</button>
+        <button onclick="saveFile()">Save File</button>
+        <button class="secondary" onclick="clearText()">Clear</button>
+      </div>
+
+      <div id="status" class="status"></div>
+
+      <footer>
+        GitHub-powered cloud storage • No backend required
+      </footer>
+
+    </div>
+  </div>
+
+  <script>
+    const owner = "Waity29";
+    const repo = "cloud-notepad-storage";
+    const pathPrefix = "files/";
+
+    // Dark mode persistence
+    if (localStorage.getItem("darkMode") === "true") {
+      document.body.classList.add("dark");
+    }
+
+    function toggleDarkMode() {
+      document.body.classList.toggle("dark");
+      localStorage.setItem("darkMode", document.body.classList.contains("dark"));
+    }
+
+    function setStatus(msg, type = "success") {
+      const status = document.getElementById("status");
+      status.textContent = msg;
+      status.className = `status ${type}`;
+    }
+
+    async function loadFile() {
+      const token = tokenInput();
+      const file = filenameInput();
+
+      try {
+        const res = await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/contents/${pathPrefix}${file}`,
+          { headers: { Authorization: `token ${token}` } }
+        );
+
+        if (!res.ok) throw new Error("File not found or unauthorized.");
+
+        const data = await res.json();
+        editor().value = atob(data.content.replace(/\n/g, ""));
+        setStatus("File loaded successfully.");
+      } catch (err) {
+        setStatus(err.message, "error");
+      }
+    }
+
+    async function saveFile() {
+      const token = tokenInput();
+      const file = filenameInput();
+      const content = editor().value;
+      const url = `https://api.github.com/repos/${owner}/${repo}/contents/${pathPrefix}${file}`;
+
+      try {
+        let sha = null;
+        const check = await fetch(url, {
+          headers: { Authorization: `token ${token}` }
+        });
+        if (check.ok) sha = (await check.json()).sha;
+
+        const res = await fetch(url, {
+          method: "PUT",
+          headers: {
+            Authorization: `token ${token}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            message: "Update via Cloud Notepad",
+            content: btoa(content),
+            sha
+          })
+        });
+
+        if (!res.ok) throw new Error("Failed to save file.");
+        setStatus("File saved successfully.");
+      } catch (err) {
+        setStatus(err.message, "error");
+      }
+    }
+
+    function clearText() {
+      editor().value = "";
+      setStatus("Text cleared.");
+    }
+
+    const tokenInput = () => document.getElementById("token").value;
+    const filenameInput = () => document.getElementById("filename").value;
+    const editor = () => document.getElementById("editor");
+  </script>
+</body>
+</html>
